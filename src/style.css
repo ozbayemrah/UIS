@@ -44,16 +44,171 @@ body {
   color: var(--text-dim);
 }
 
-#galaxy-root {
+#scene-root {
   position: absolute;
   inset: 0;
 }
 
-#galaxy-root canvas {
+#scene-root canvas {
   display: block;
   cursor: grab;
 }
 
-#galaxy-root canvas:active {
+#scene-root canvas:active {
   cursor: grabbing;
+}
+
+#poi-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.poi {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform, opacity;
+  transition: opacity 200ms ease;
+}
+
+/* Aligned with .poi__head (dot + label sit 22px above the anchor point,
+   same offset as .poi__pin) so hovering/clicking works where the visible
+   marker actually is, not down at the invisible anchor point. */
+.poi__hit {
+  position: absolute;
+  top: -22px;
+  left: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.poi__hit--clickable {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+@keyframes poi-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* The stem rises PIN_HEIGHT above the exact 3D point (anchored at .poi's
+   own (0,0) via translate(x,y) in JS); the head - dot + label - sits at
+   the stem's tip, like a map pin planted at the point it marks. */
+.poi__pin {
+  position: absolute;
+  top: -22px;
+  left: 0;
+  width: 0;
+  height: 22px;
+}
+
+.poi__stem {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-50%);
+  background: linear-gradient(to top, var(--accent), rgba(223, 241, 64, 0.05));
+}
+
+.poi__head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+}
+
+.poi--flip .poi__head {
+  flex-direction: row-reverse;
+}
+
+.poi__dot {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow:
+    0 0 5px 2px rgba(223, 241, 64, 0.85),
+    0 0 14px 6px rgba(223, 241, 64, 0.3);
+  animation: poi-pulse 2.6s ease-in-out infinite;
+}
+
+.poi__hit--clickable:hover ~ .poi__pin .poi__dot {
+  transform: scale(1.6);
+  animation-play-state: paused;
+  opacity: 1;
+}
+
+.poi__label {
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  text-shadow: 0 0 6px rgba(223, 241, 64, 0.55);
+}
+
+#transition-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 650ms ease;
+}
+
+#transition-veil.veil--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.back-button {
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  z-index: 10;
+  padding: 8px 16px;
+  border: 1px solid rgba(242, 242, 242, 0.18);
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 200ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease;
+}
+
+.back-button--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.back-button:hover {
+  background: rgba(223, 241, 64, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
 }

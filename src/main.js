@@ -1,42 +1,64 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { createGalaxy } from './galaxy/createGalaxy.js';
-import { updatePointScale } from './galaxy/variablePointsMaterial.js';
+import { createGalaxy, getSunPosition } from './galaxy/createGalaxy.js';
+import { createPointOfInterest } from './galaxy/pointOfInterest.js';
+import { createSolarSystem, updateOrbits } from './solar-system/createSolarSystem.js';
+import { updatePointScale } from './shared/variablePointsMaterial.js';
+import { disposeGroup } from './shared/disposeGroup.js';
 
-const galaxyRoot = document.getElementById('galaxy-root');
+const sceneRoot = document.getElementById('scene-root');
+const poiRoot = document.getElementById('poi-root');
+const veilEl = document.getElementById('transition-veil');
+const backButtonEl = document.getElementById('back-button');
+const hudHintEl = document.querySelector('.hud__hint');
+
+const GALAXY_VIEW = {
+  position: new THREE.Vector3(0, 1.05, 2.35),
+  minDistance: 0.35,
+  maxDistance: 8,
+  autoRotateSpeed: 0.15,
+  hint: 'drag to rotate · scroll to zoom · click the marker to enter the solar system',
+};
+const SOLAR_SYSTEM_VIEW = {
+  position: new THREE.Vector3(0, 2.0, 3.6),
+  minDistance: 0.25,
+  maxDistance: 6,
+  autoRotateSpeed: 0.06,
+  hint: 'drag to rotate · scroll to zoom',
+};
+
+const TRANSITION_MS = 650;
 
 const scene = new THREE.Scene();
 
-const camera = new THREE.PerspectiveCamera(
-  45,
-  galaxyRoot.clientWidth / galaxyRoot.clientHeight,
-  0.05,
-  200
-);
-camera.position.set(0, 1.05, 2.35);
+const camera = new THREE.PerspectiveCamera(45, sceneRoot.clientWidth / sceneRoot.clientHeight, 0.05, 200);
+camera.position.copy(GALAXY_VIEW.position);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(galaxyRoot.clientWidth, galaxyRoot.clientHeight);
+renderer.setSize(sceneRoot.clientWidth, sceneRoot.clientHeight);
 renderer.setClearColor(0x000000, 1);
-galaxyRoot.appendChild(renderer.domElement);
+sceneRoot.appendChild(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.enablePan = false;
-controls.minDistance = 0.35;
-controls.maxDistance = 8;
 controls.rotateSpeed = 0.45;
 controls.zoomSpeed = 0.6;
 controls.autoRotate = true;
-controls.autoRotateSpeed = 0.15;
 
 let pointMaterials = [];
+let currentGroup = null;
+let sunMarker = null;
+let orbits = [];
+let currentView = 'galaxy';
+let transitioning = false;
+let cameraAnim = null;
 
 function onResize() {
-  const width = galaxyRoot.clientWidth;
-  const height = galaxyRoot.clientHeight;
+  const width = sceneRoot.clientWidth;
+  const height = sceneRoot.clientHeight;
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
   renderer.setSize(width, height);
@@ -44,15 +66,135 @@ function onResize() {
 }
 window.addEventListener('resize', onResize);
 
-function init() {
-  const { group: galaxyGroup, materials } = createGalaxy();
-  scene.add(galaxyGroup);
-  pointMaterials = materials;
+function easeInOutCubic(t) {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+// A short dolly toward the clicked point (not all the way - the veil fade
+// covers the rest) so the transition reads as "zooming in", not just a cut.
+function startCameraDolly(targetWorldPos, duration) {
+  const fromPos = camera.position.clone();
+  const distance = fromPos.distanceTo(targetWorldPos);
+  const dir = targetWorldPos.clone().sub(fromPos).normalize();
+  const toPos = fromPos.clone().add(dir.multiplyScalar(distance * 0.55));
+  cameraAnim = { fromPos, toPos, start: performance.now(), duration };
+}
+
+function fadeVeil(visible) {
+  veilEl.classList.toggle('veil--visible', visible);
+  return new Promise((resolve) => setTimeout(resolve, TRANSITION_MS + 30));
+}
+
+function teardownScene() {
+  if (currentGroup) {
+    scene.remove(currentGroup);
+    disposeGroup(currentGroup);
+    currentGroup = null;
+  }
+  if (sunMarker) {
+    sunMarker.el.remove();
+    sunMarker = null;
+  }
+  pointMaterials = [];
+  orbits = [];
+}
+
+function applyView(viewConfig) {
+  camera.position.copy(viewConfig.position);
+  controls.minDistance = viewConfig.minDistance;
+  controls.maxDistance = viewConfig.maxDistance;
+  controls.autoRotateSpeed = viewConfig.autoRotateSpeed;
+  controls.autoRotate = true;
+  controls.target.set(0, 0, 0);
+  controls.update();
+  hudHintEl.textContent = viewConfig.hint;
   for (const material of pointMaterials) updatePointScale(material, renderer, camera);
+}
+
+function buildGalaxyScene() {
+  const { group, materials } = createGalaxy();
+  scene.add(group);
+  currentGroup = group;
+  pointMaterials = materials;
+
+  sunMarker = createPointOfInterest({
+    root: poiRoot,
+    group,
+    position: getSunPosition(),
+    label: 'Solar System',
+    onSelect: enterSolarSystem,
+  });
+
+  applyView(GALAXY_VIEW);
+  backButtonEl.classList.remove('back-button--visible');
+  currentView = 'galaxy';
+}
+
+function buildSolarSystemScene() {
+  const { group, materials, orbits: builtOrbits } = createSolarSystem();
+  scene.add(group);
+  currentGroup = group;
+  pointMaterials = materials;
+  orbits = builtOrbits;
+
+  applyView(SOLAR_SYSTEM_VIEW);
+  backButtonEl.classList.add('back-button--visible');
+  currentView = 'solar-system';
+}
+
+async function enterSolarSystem() {
+  if (transitioning || currentView === 'solar-system') return;
+  transitioning = true;
+  controls.autoRotate = false;
+  controls.enabled = false;
+
+  const markerWorldPos = getSunPosition().applyMatrix4(currentGroup.matrixWorld);
+  startCameraDolly(markerWorldPos, TRANSITION_MS);
+
+  await fadeVeil(true);
+  teardownScene();
+  buildSolarSystemScene();
+  await fadeVeil(false);
+
+  controls.enabled = true;
+  transitioning = false;
+}
+
+async function exitToGalaxy() {
+  if (transitioning || currentView === 'galaxy') return;
+  transitioning = true;
+  controls.autoRotate = false;
+  controls.enabled = false;
+
+  await fadeVeil(true);
+  teardownScene();
+  buildGalaxyScene();
+  await fadeVeil(false);
+
+  controls.enabled = true;
+  transitioning = false;
+}
+
+backButtonEl.addEventListener('click', exitToGalaxy);
+
+function init() {
+  buildGalaxyScene();
+
+  const clock = new THREE.Clock();
 
   function animate() {
     requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+
+    if (cameraAnim) {
+      const t = Math.min(1, (performance.now() - cameraAnim.start) / cameraAnim.duration);
+      camera.position.lerpVectors(cameraAnim.fromPos, cameraAnim.toPos, easeInOutCubic(t));
+      if (t >= 1) cameraAnim = null;
+    }
+
     controls.update();
+    if (sunMarker) sunMarker.update(camera, sceneRoot.clientWidth, sceneRoot.clientHeight);
+    if (orbits.length) updateOrbits(orbits, delta);
     renderer.render(scene, camera);
   }
   animate();
