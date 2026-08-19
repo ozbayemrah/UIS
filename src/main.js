@@ -158,6 +158,10 @@ async function enterSolarSystem() {
   await fadeVeil(true);
   teardownScene();
   buildSolarSystemScene();
+  // The dolly may not have finished its lerp yet (its 650ms window races
+  // the veil-fade await) - cancel it outright so a stale in-flight frame
+  // can't overwrite the new scene's camera position right after it's set.
+  cameraAnim = null;
   await fadeVeil(false);
 
   controls.enabled = true;
@@ -205,4 +209,3 @@ function init() {
 }
 
 init();
-window.__debug = { camera, controls, SOLAR_SYSTEM_VIEW, GALAXY_VIEW, get currentView() { return currentView; } };
