@@ -73,12 +73,12 @@ body {
   transition: opacity 200ms ease;
 }
 
-/* Aligned with .poi__head (dot + label sit 22px above the anchor point,
-   same offset as .poi__pin) so hovering/clicking works where the visible
-   marker actually is, not down at the invisible anchor point. */
+/* Aligned with .poi__head (dot + label sit PIN_HEIGHT above the anchor
+   point, same offset as .poi__pin) so hovering/clicking works where the
+   visible marker actually is, not down at the invisible anchor point. */
 .poi__hit {
   position: absolute;
-  top: -22px;
+  top: -66px;
   left: 0;
   width: 30px;
   height: 30px;
@@ -92,27 +92,20 @@ body {
   cursor: pointer;
 }
 
-@keyframes poi-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-/* The stem rises PIN_HEIGHT above the exact 3D point (anchored at .poi's
-   own (0,0) via translate(x,y) in JS); the head - dot + label - sits at
-   the stem's tip, like a map pin planted at the point it marks. */
+/* The stem rises PIN_HEIGHT (66px = 3x the original 22px) above the exact
+   3D point (anchored at .poi's own (0,0) via translate(x,y) in JS); the
+   head - dot + label - sits at the stem's tip, like a map pin planted at
+   the point it marks. */
 .poi__pin {
   position: absolute;
-  top: -22px;
+  top: -66px;
   left: 0;
   width: 0;
-  height: 22px;
+  height: 66px;
 }
 
+/* Mirrored fade from the original: transparent at the anchor point (the
+   line's bottom), full opacity at the tip up near the dot. */
 .poi__stem {
   position: absolute;
   left: 0;
@@ -120,47 +113,40 @@ body {
   width: 1px;
   height: 100%;
   transform: translateX(-50%);
-  background: linear-gradient(to top, var(--accent), rgba(223, 241, 64, 0.05));
+  background: linear-gradient(to top, rgba(223, 241, 64, 0), var(--accent));
 }
 
 .poi__head {
   position: absolute;
   top: 0;
   left: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transform: translate(-50%, -50%);
 }
 
-.poi--flip .poi__head {
-  flex-direction: row-reverse;
-}
-
+/* Plain dot, no glow/pulse/hover-scale - centered directly on the stem's
+   tip rather than as part of a dot+label group, so it stays exactly on
+   top of the line regardless of the label's length. */
 .poi__dot {
-  flex: none;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow:
-    0 0 5px 2px rgba(223, 241, 64, 0.85),
-    0 0 14px 6px rgba(223, 241, 64, 0.3);
-  animation: poi-pulse 2.6s ease-in-out infinite;
+  transform: translate(-50%, -50%);
 }
 
-.poi__hit--clickable:hover ~ .poi__pin .poi__dot {
-  transform: scale(1.6);
-  animation-play-state: paused;
-  opacity: 1;
-}
-
+/* Label reads to the right of the dot, not as a group centered on the line. */
 .poi__label {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
   white-space: nowrap;
+  text-align: left;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--accent);
-  text-shadow: 0 0 6px rgba(223, 241, 64, 0.55);
 }
 
 #transition-veil {

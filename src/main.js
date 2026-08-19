@@ -20,9 +20,9 @@ const GALAXY_VIEW = {
   hint: 'drag to rotate · scroll to zoom · click the marker to enter the solar system',
 };
 const SOLAR_SYSTEM_VIEW = {
-  position: new THREE.Vector3(0, 2.0, 3.6),
+  position: new THREE.Vector3(0, 2.8, 5.4),
   minDistance: 0.25,
-  maxDistance: 6,
+  maxDistance: 8,
   autoRotateSpeed: 0.06,
   hint: 'drag to rotate · scroll to zoom',
 };
@@ -50,7 +50,7 @@ controls.autoRotate = true;
 
 let pointMaterials = [];
 let currentGroup = null;
-let sunMarker = null;
+let markers = [];
 let orbits = [];
 let currentView = 'galaxy';
 let transitioning = false;
@@ -91,10 +91,8 @@ function teardownScene() {
     disposeGroup(currentGroup);
     currentGroup = null;
   }
-  if (sunMarker) {
-    sunMarker.el.remove();
-    sunMarker = null;
-  }
+  for (const marker of markers) marker.el.remove();
+  markers = [];
   pointMaterials = [];
   orbits = [];
 }
@@ -117,13 +115,15 @@ function buildGalaxyScene() {
   currentGroup = group;
   pointMaterials = materials;
 
-  sunMarker = createPointOfInterest({
-    root: poiRoot,
-    group,
-    position: getSunPosition(),
-    label: 'Solar System',
-    onSelect: enterSolarSystem,
-  });
+  markers = [
+    createPointOfInterest({
+      root: poiRoot,
+      group,
+      position: getSunPosition(),
+      label: 'Solar System',
+      onSelect: enterSolarSystem,
+    }),
+  ];
 
   applyView(GALAXY_VIEW);
   backButtonEl.classList.remove('back-button--visible');
@@ -131,11 +131,15 @@ function buildGalaxyScene() {
 }
 
 function buildSolarSystemScene() {
-  const { group, materials, orbits: builtOrbits } = createSolarSystem();
+  const { group, materials, orbits: builtOrbits, planetMarkers } = createSolarSystem();
   scene.add(group);
   currentGroup = group;
   pointMaterials = materials;
   orbits = builtOrbits;
+
+  markers = planetMarkers.map(({ label, group: markerGroup, position }) =>
+    createPointOfInterest({ root: poiRoot, group: markerGroup, position, label })
+  );
 
   applyView(SOLAR_SYSTEM_VIEW);
   backButtonEl.classList.add('back-button--visible');
@@ -193,8 +197,8 @@ function init() {
     }
 
     controls.update();
-    if (sunMarker) sunMarker.update(camera, sceneRoot.clientWidth, sceneRoot.clientHeight);
     if (orbits.length) updateOrbits(orbits, delta);
+    for (const marker of markers) marker.update(camera, sceneRoot.clientWidth, sceneRoot.clientHeight);
     renderer.render(scene, camera);
   }
   animate();

@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 
 // A single clickable "you are here"-style marker: a map-pin shape (a
-// vertical stem rising from the exact 3D point, capped with a glowing dot
-// and label at the top) - all DOM (not WebGL), same approach the Earth
-// version used for its capital-city markers, kept generic here so the same
-// component can mark points of interest inside the Solar System scene too
-// (e.g. planets), not just this one galaxy-level entry.
+// vertical stem rising above the exact 3D point, fading in from transparent
+// at the point to full opacity at the tip, capped with a plain dot and a
+// label reading to its right) - all DOM (not WebGL), same approach the
+// Earth version used for its capital-city markers, kept generic here so
+// the same component can mark points of interest inside the Solar System
+// scene too (e.g. planets), not just this one galaxy-level entry.
 export function createPointOfInterest({ root, group, position, label, onSelect }) {
   const el = document.createElement('div');
   el.className = 'poi';
@@ -33,6 +34,11 @@ export function createPointOfInterest({ root, group, position, label, onSelect }
   const camDir = new THREE.Vector3();
 
   function update(camera, width, height) {
+    // `group` may be an orbiting planet's holder, whose local rotation can
+    // change earlier in the same frame (updateOrbits) - matrixWorld is
+    // otherwise only refreshed inside renderer.render(), so without this
+    // the marker would reproject from last frame's transform.
+    group.updateMatrixWorld();
     worldPos.copy(position).applyMatrix4(group.matrixWorld);
 
     toPoint.copy(worldPos).sub(camera.position);
@@ -50,7 +56,6 @@ export function createPointOfInterest({ root, group, position, label, onSelect }
 
     el.style.transform = `translate(${x}px, ${y}px)`;
     el.style.opacity = '1';
-    el.classList.toggle('poi--flip', x > width / 2);
   }
 
   return { el, update };
