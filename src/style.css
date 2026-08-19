@@ -1,0 +1,59 @@
+:root {
+  --accent: #dff140;
+  --bg: #000000;
+  --text: #f2f2f2;
+  --text-dim: rgba(242, 242, 242, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+.hud {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  padding: 24px 32px;
+  pointer-events: none;
+}
+
+.hud__hint {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+#galaxy-root {
+  position: absolute;
+  inset: 0;
+}
+
+#galaxy-root canvas {
+  display: block;
+  cursor: grab;
+}
+
+#galaxy-root canvas:active {
+  cursor: grabbing;
+}
