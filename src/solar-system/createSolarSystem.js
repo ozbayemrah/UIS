@@ -26,9 +26,11 @@ const SUN_COLOR = new THREE.Color(0xfff1c2);
 
 const ORBIT_SPEED_BASE = 0.16; // radians/sec at orbitRadius = 1, Kepler-ish falloff beyond that
 
-const BACKGROUND_RADIUS = 10;
-const BACKGROUND_STAR_COUNT = 5000;
-const BACKGROUND_POINT_SIZE = 0.028;
+// Kept well outside OrbitControls.maxDistance (main.js) so the camera never
+// reaches the shell, same rule the galaxy's background uses.
+const BACKGROUND_RADIUS = 25;
+const BACKGROUND_STAR_COUNT = 8000;
+const BACKGROUND_POINT_SIZE = 0.065;
 
 export function createSolarSystem() {
   const group = new THREE.Group();

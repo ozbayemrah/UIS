@@ -20,9 +20,9 @@ const GALAXY_VIEW = {
   hint: 'drag to rotate · scroll to zoom · click the marker to enter the solar system',
 };
 const SOLAR_SYSTEM_VIEW = {
-  position: new THREE.Vector3(0, 2.8, 5.4),
+  position: new THREE.Vector3(0, 6, 8),
   minDistance: 0.25,
-  maxDistance: 8,
+  maxDistance: 12,
   autoRotateSpeed: 0.06,
   hint: 'drag to rotate · scroll to zoom',
 };
@@ -205,3 +205,4 @@ function init() {
 }
 
 init();
+window.__debug = { camera, controls, SOLAR_SYSTEM_VIEW, GALAXY_VIEW, get currentView() { return currentView; } };
