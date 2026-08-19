@@ -1,2 +1,2 @@
 # UIS
-A universe information system created using web gl
+A universe information system (UIS) created using web gl
