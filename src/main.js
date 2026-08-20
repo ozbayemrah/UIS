@@ -7,6 +7,7 @@ import { getFarSystems } from './galaxy/farSystems.js';
 import { createStarSystem, updateOrbits, SOL_CONFIG } from './solar-system/createSolarSystem.js';
 import { EXOPLANET_SYSTEMS } from './solar-system/exoplanetSystems.js';
 import { createEarth } from './earth/createEarth.js';
+import { PLANET_SCENES } from './planets/proceduralPlanets.js';
 import { updatePointScale, updateWaveTime } from './shared/variablePointsMaterial.js';
 import { disposeGroup } from './shared/disposeGroup.js';
 import { initCustomCursor } from './shared/customCursor.js';
@@ -31,7 +32,7 @@ const SYSTEM_VIEW = {
   autoRotateSpeed: 0.06,
   hint: 'drag to rotate · scroll to zoom',
 };
-const EARTH_VIEW = {
+const PLANET_VIEW = {
   position: new THREE.Vector3(0, 0, 2.7),
   minDistance: 1.6,
   maxDistance: 5,
@@ -40,6 +41,12 @@ const EARTH_VIEW = {
 };
 
 const TRANSITION_MS = 650;
+
+// Every planet that opens its own detailed scene, keyed by the exact label
+// used in solar-system/createSolarSystem.js's PLANETS array - Earth (real
+// texture) and the other 7 (procedural) are otherwise handled identically
+// from here on, so they share one lookup and one enter/build/exit path.
+const PLANET_BUILDERS = { Earth: createEarth, ...PLANET_SCENES };
 
 // Real-world facts about the actual Sun/Solar System, shown in the hover
 // popup - separate from the procedural, non-real-scale geometry the app
@@ -181,30 +188,30 @@ function buildStarSystemScene(config) {
   pointMaterials = materials;
   orbits = builtOrbits;
 
-  // Only the Solar System's own Earth opens the detailed globe scene - every
-  // other planet (here and in every exoplanet system) stays hover-only,
-  // there's nothing built for them to zoom into yet.
+  // Only the Solar System's own planets open a detailed scene - every planet
+  // in every exoplanet system stays hover-only, there's nothing built for
+  // them to zoom into yet.
   markers = markerSpecs.map(({ label, group: markerGroup, position, info }) => {
-    const isEarth = config === SOL_CONFIG && label === 'Earth';
+    const buildFn = config === SOL_CONFIG ? PLANET_BUILDERS[label] : undefined;
     return createPointOfInterest({
       root: poiRoot,
       group: markerGroup,
       position,
       label,
       info,
-      onSelect: isEarth ? () => enterEarthScene(markerGroup, position) : undefined,
+      onSelect: buildFn ? () => enterPlanetScene(buildFn, markerGroup, position) : undefined,
     });
   });
 
   applyView(SYSTEM_VIEW);
-  if (config === SOL_CONFIG) hudHintEl.textContent = `${SYSTEM_VIEW.hint} · click Earth to explore it`;
+  if (config === SOL_CONFIG) hudHintEl.textContent = `${SYSTEM_VIEW.hint} · click a planet to explore it`;
   backButtonEl.textContent = '← back to galaxy';
   backButtonEl.classList.add('back-button--visible');
   currentView = 'system';
 }
 
-async function buildEarthScene() {
-  const { group, materials, markers: markerSpecs } = await createEarth();
+async function buildPlanetScene(buildFn) {
+  const { group, materials, markers: markerSpecs } = await buildFn();
   scene.add(group);
   currentGroup = group;
   pointMaterials = materials;
@@ -213,10 +220,10 @@ async function buildEarthScene() {
     createPointOfInterest({ root: poiRoot, group: markerGroup, position, label, info })
   );
 
-  applyView(EARTH_VIEW);
+  applyView(PLANET_VIEW);
   backButtonEl.textContent = '← back to solar system';
   backButtonEl.classList.add('back-button--visible');
-  currentView = 'earth';
+  currentView = 'planet';
 }
 
 async function enterStarSystem(config, localPosition) {
@@ -241,12 +248,11 @@ async function enterStarSystem(config, localPosition) {
   transitioning = false;
 }
 
-// `markerGroup` is Earth's own orbiting holder (not the star system's
-// top-level group), since Earth is nested inside a pivot like every other
-// planet - its world position has to come from its own group's matrix, not
-// the scene root's.
-async function enterEarthScene(markerGroup, localPosition) {
-  if (transitioning || currentView === 'earth') return;
+// `markerGroup` is the planet's own orbiting holder (not the star system's
+// top-level group), since every planet is nested inside a pivot - its world
+// position has to come from its own group's matrix, not the scene root's.
+async function enterPlanetScene(buildFn, markerGroup, localPosition) {
+  if (transitioning || currentView === 'planet') return;
   transitioning = true;
   controls.autoRotate = false;
   controls.enabled = false;
@@ -256,7 +262,7 @@ async function enterEarthScene(markerGroup, localPosition) {
 
   await fadeVeil(true);
   teardownScene();
-  await buildEarthScene();
+  await buildPlanetScene(buildFn);
   cameraAnim = null;
   await fadeVeil(false);
 
@@ -280,7 +286,7 @@ async function exitToGalaxy() {
 }
 
 async function exitToStarSystem() {
-  if (transitioning || currentView !== 'earth') return;
+  if (transitioning || currentView !== 'planet') return;
   transitioning = true;
   controls.autoRotate = false;
   controls.enabled = false;
@@ -294,7 +300,7 @@ async function exitToStarSystem() {
   transitioning = false;
 }
 
-backButtonEl.addEventListener('click', () => (currentView === 'earth' ? exitToStarSystem() : exitToGalaxy()));
+backButtonEl.addEventListener('click', () => (currentView === 'planet' ? exitToStarSystem() : exitToGalaxy()));
 
 function init() {
   initCustomCursor();
