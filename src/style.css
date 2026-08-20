@@ -23,6 +23,12 @@ body {
   position: relative;
   width: 100vw;
   height: 100vh;
+  /* The whole app uses the custom reticle (cursor-reticle below) instead of
+     any native cursor - descendants with their own `cursor` value (there
+     aren't any left; poi__hit--clickable/.back-button explicitly opt back
+     into `none` too) would still override this via normal inheritance
+     rules if one were ever added. */
+  cursor: none;
 }
 
 .hud {
@@ -51,11 +57,6 @@ body {
 
 #scene-root canvas {
   display: block;
-  cursor: grab;
-}
-
-#scene-root canvas:active {
-  cursor: grabbing;
 }
 
 #poi-root {
@@ -73,23 +74,23 @@ body {
   transition: opacity 200ms ease;
 }
 
-/* Aligned with .poi__head (dot + label sit PIN_HEIGHT above the anchor
-   point, same offset as .poi__pin) so hovering/clicking works where the
-   visible marker actually is, not down at the invisible anchor point. */
+/* A single invisible rect covering the dot + label (plus padding) - top,
+   left, width, height are all set in JS from the label's rendered size, so
+   there's no fixed geometry here beyond the positioning mode. Kept
+   pointer-events: none until `--interactive` opts a given marker in, since
+   plain (non-hoverable, non-clickable) markers should stay click-through. */
 .poi__hit {
   position: absolute;
-  top: -66px;
-  left: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
+  border-radius: 6px;
   pointer-events: none;
 }
 
-.poi__hit--clickable {
+.poi__hit--interactive {
   pointer-events: auto;
-  cursor: pointer;
+}
+
+.poi__hit--clickable {
+  cursor: none;
 }
 
 /* The stem rises PIN_HEIGHT (66px = 3x the original 22px) above the exact
@@ -149,6 +150,61 @@ body {
   color: var(--accent);
 }
 
+/* Anchored below the dot+label rather than the stem tip, so it never
+   overlaps the label it's describing regardless of label length. */
+.poi__popup {
+  position: absolute;
+  top: 22px;
+  left: calc(100% + 8px);
+  width: 230px;
+  padding: 12px 14px;
+  border: 1px solid rgba(223, 241, 64, 0.3);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+  z-index: 20;
+}
+
+.poi--hovered .poi__popup {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.poi__popup-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 9px;
+}
+
+.poi__popup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.poi__popup-row span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poi__popup-row span:last-child {
+  color: var(--text);
+  text-align: right;
+}
+
 #transition-veil {
   position: fixed;
   inset: 0;
@@ -178,7 +234,7 @@ body {
   font-family: inherit;
   font-size: 12px;
   letter-spacing: 0.04em;
-  cursor: pointer;
+  cursor: none;
   opacity: 0;
   pointer-events: none;
   transition:
@@ -197,4 +253,68 @@ body {
   background: rgba(223, 241, 64, 0.12);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* Custom cursor: a small crosshair reticle, positioned every mousemove
+   (customCursor.js) instead of a native `cursor` image, specifically so it
+   *can* be CSS-animated - native cursor images can't be. A dark halo layer
+   sits behind the accent-colored lines so it stays visible against both
+   black space and the galaxy's bright core. */
+.cursor-reticle {
+  position: fixed;
+  top: -12px;
+  left: -12px;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  z-index: 100;
+  will-change: transform;
+}
+
+.cursor-reticle--hidden {
+  display: none;
+}
+
+.cursor-reticle__halo line {
+  stroke: #000;
+  stroke-opacity: 0.55;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.cursor-reticle__line line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+/* Clickable state: the reticle breathes (scales up/down) and its accent
+   lines blink, so a hovered marker/back-button reads as "live" without
+   needing its own hover style. */
+.cursor-reticle--active svg {
+  animation: cursor-breathe 1.1s ease-in-out infinite;
+}
+
+.cursor-reticle--active .cursor-reticle__line {
+  animation: cursor-blink 0.9s ease-in-out infinite;
+}
+
+@keyframes cursor-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+@keyframes cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }

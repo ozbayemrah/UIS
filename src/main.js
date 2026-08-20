@@ -2,9 +2,14 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { createGalaxy, getSunPosition } from './galaxy/createGalaxy.js';
 import { createPointOfInterest } from './galaxy/pointOfInterest.js';
-import { createSolarSystem, updateOrbits } from './solar-system/createSolarSystem.js';
-import { updatePointScale } from './shared/variablePointsMaterial.js';
+import { getNearbyStars } from './galaxy/nearbyStars.js';
+import { getFarSystems } from './galaxy/farSystems.js';
+import { createStarSystem, updateOrbits, SOL_CONFIG } from './solar-system/createSolarSystem.js';
+import { EXOPLANET_SYSTEMS } from './solar-system/exoplanetSystems.js';
+import { createEarth } from './earth/createEarth.js';
+import { updatePointScale, updateWaveTime } from './shared/variablePointsMaterial.js';
 import { disposeGroup } from './shared/disposeGroup.js';
+import { initCustomCursor } from './shared/customCursor.js';
 
 const sceneRoot = document.getElementById('scene-root');
 const poiRoot = document.getElementById('poi-root');
@@ -17,17 +22,40 @@ const GALAXY_VIEW = {
   minDistance: 0.35,
   maxDistance: 8,
   autoRotateSpeed: 0.15,
-  hint: 'drag to rotate · scroll to zoom · click the marker to enter the solar system',
+  hint: 'drag to rotate · scroll to zoom · click a marker to enter its system',
 };
-const SOLAR_SYSTEM_VIEW = {
+const SYSTEM_VIEW = {
   position: new THREE.Vector3(0, 6, 8),
   minDistance: 0.25,
   maxDistance: 12,
   autoRotateSpeed: 0.06,
   hint: 'drag to rotate · scroll to zoom',
 };
+const EARTH_VIEW = {
+  position: new THREE.Vector3(0, 0, 2.7),
+  minDistance: 1.6,
+  maxDistance: 5,
+  autoRotateSpeed: 0.2,
+  hint: 'drag to rotate · scroll to zoom',
+};
 
 const TRANSITION_MS = 650;
+
+// Real-world facts about the actual Sun/Solar System, shown in the hover
+// popup - separate from the procedural, non-real-scale geometry the app
+// otherwise builds. "Distance from galactic core" stands in for "distance
+// from the center of the universe": the universe has no center under
+// modern cosmology, but the galactic core is the nearest meaningful anchor
+// and is what people usually mean by that question.
+const SOLAR_SYSTEM_INFO = [
+  { label: 'Planets', value: '8' },
+  { label: 'Star type', value: 'G2V yellow dwarf' },
+  { label: 'Star age', value: '~4.6 billion yrs' },
+  { label: 'Star diameter', value: '~1.39M km (109× Earth)' },
+  { label: 'Surface temp', value: '~5,500°C' },
+  { label: 'Location', value: 'Orion Arm' },
+  { label: 'Dist. from galactic core', value: '~26,000 ly' },
+];
 
 const scene = new THREE.Scene();
 
@@ -109,6 +137,21 @@ function applyView(viewConfig) {
   for (const material of pointMaterials) updatePointScale(material, renderer, camera);
 }
 
+// Builds a galaxy-scene marker, wiring up onSelect only when `label` has a
+// matching real system to enter (the Sun always does; other stars do only
+// if EXOPLANET_SYSTEMS has real planet data for them - most don't, and stay
+// hover-only, same as before).
+function createGalaxyMarker(group, { label, position, info }, config) {
+  return createPointOfInterest({
+    root: poiRoot,
+    group,
+    position,
+    label,
+    info,
+    onSelect: config ? () => enterStarSystem(config, position) : undefined,
+  });
+}
+
 function buildGalaxyScene() {
   const { group, materials } = createGalaxy();
   scene.add(group);
@@ -116,13 +159,14 @@ function buildGalaxyScene() {
   pointMaterials = materials;
 
   markers = [
-    createPointOfInterest({
-      root: poiRoot,
-      group,
-      position: getSunPosition(),
-      label: 'Solar System',
-      onSelect: enterSolarSystem,
-    }),
+    createGalaxyMarker(group, { label: 'Solar System', position: getSunPosition(), info: SOLAR_SYSTEM_INFO }, SOL_CONFIG),
+    // Real, well-known star systems fanned out near the Sun marker - only
+    // the ones with a confirmed real planet (see EXOPLANET_SYSTEMS) are
+    // clickable; the rest stay hover-only.
+    ...getNearbyStars().map((star) => createGalaxyMarker(group, star, EXOPLANET_SYSTEMS[star.label])),
+    // A few more real systems scattered further out across the galaxy, so
+    // it doesn't read as only the Sun's immediate neighborhood.
+    ...getFarSystems().map((star) => createGalaxyMarker(group, star, EXOPLANET_SYSTEMS[star.label])),
   ];
 
   applyView(GALAXY_VIEW);
@@ -130,37 +174,89 @@ function buildGalaxyScene() {
   currentView = 'galaxy';
 }
 
-function buildSolarSystemScene() {
-  const { group, materials, orbits: builtOrbits, planetMarkers } = createSolarSystem();
+function buildStarSystemScene(config) {
+  const { group, materials, orbits: builtOrbits, markers: markerSpecs } = createStarSystem(config);
   scene.add(group);
   currentGroup = group;
   pointMaterials = materials;
   orbits = builtOrbits;
 
-  markers = planetMarkers.map(({ label, group: markerGroup, position }) =>
-    createPointOfInterest({ root: poiRoot, group: markerGroup, position, label })
-  );
+  // Only the Solar System's own Earth opens the detailed globe scene - every
+  // other planet (here and in every exoplanet system) stays hover-only,
+  // there's nothing built for them to zoom into yet.
+  markers = markerSpecs.map(({ label, group: markerGroup, position, info }) => {
+    const isEarth = config === SOL_CONFIG && label === 'Earth';
+    return createPointOfInterest({
+      root: poiRoot,
+      group: markerGroup,
+      position,
+      label,
+      info,
+      onSelect: isEarth ? () => enterEarthScene(markerGroup, position) : undefined,
+    });
+  });
 
-  applyView(SOLAR_SYSTEM_VIEW);
+  applyView(SYSTEM_VIEW);
+  if (config === SOL_CONFIG) hudHintEl.textContent = `${SYSTEM_VIEW.hint} · click Earth to explore it`;
+  backButtonEl.textContent = '← back to galaxy';
   backButtonEl.classList.add('back-button--visible');
-  currentView = 'solar-system';
+  currentView = 'system';
 }
 
-async function enterSolarSystem() {
-  if (transitioning || currentView === 'solar-system') return;
+async function buildEarthScene() {
+  const { group, materials, markers: markerSpecs } = await createEarth();
+  scene.add(group);
+  currentGroup = group;
+  pointMaterials = materials;
+
+  markers = markerSpecs.map(({ label, group: markerGroup, position, info }) =>
+    createPointOfInterest({ root: poiRoot, group: markerGroup, position, label, info })
+  );
+
+  applyView(EARTH_VIEW);
+  backButtonEl.textContent = '← back to solar system';
+  backButtonEl.classList.add('back-button--visible');
+  currentView = 'earth';
+}
+
+async function enterStarSystem(config, localPosition) {
+  if (transitioning || currentView === 'system') return;
   transitioning = true;
   controls.autoRotate = false;
   controls.enabled = false;
 
-  const markerWorldPos = getSunPosition().applyMatrix4(currentGroup.matrixWorld);
+  const markerWorldPos = localPosition.clone().applyMatrix4(currentGroup.matrixWorld);
   startCameraDolly(markerWorldPos, TRANSITION_MS);
 
   await fadeVeil(true);
   teardownScene();
-  buildSolarSystemScene();
+  buildStarSystemScene(config);
   // The dolly may not have finished its lerp yet (its 650ms window races
   // the veil-fade await) - cancel it outright so a stale in-flight frame
   // can't overwrite the new scene's camera position right after it's set.
+  cameraAnim = null;
+  await fadeVeil(false);
+
+  controls.enabled = true;
+  transitioning = false;
+}
+
+// `markerGroup` is Earth's own orbiting holder (not the star system's
+// top-level group), since Earth is nested inside a pivot like every other
+// planet - its world position has to come from its own group's matrix, not
+// the scene root's.
+async function enterEarthScene(markerGroup, localPosition) {
+  if (transitioning || currentView === 'earth') return;
+  transitioning = true;
+  controls.autoRotate = false;
+  controls.enabled = false;
+
+  const markerWorldPos = localPosition.clone().applyMatrix4(markerGroup.matrixWorld);
+  startCameraDolly(markerWorldPos, TRANSITION_MS);
+
+  await fadeVeil(true);
+  teardownScene();
+  await buildEarthScene();
   cameraAnim = null;
   await fadeVeil(false);
 
@@ -183,9 +279,25 @@ async function exitToGalaxy() {
   transitioning = false;
 }
 
-backButtonEl.addEventListener('click', exitToGalaxy);
+async function exitToStarSystem() {
+  if (transitioning || currentView !== 'earth') return;
+  transitioning = true;
+  controls.autoRotate = false;
+  controls.enabled = false;
+
+  await fadeVeil(true);
+  teardownScene();
+  buildStarSystemScene(SOL_CONFIG);
+  await fadeVeil(false);
+
+  controls.enabled = true;
+  transitioning = false;
+}
+
+backButtonEl.addEventListener('click', () => (currentView === 'earth' ? exitToStarSystem() : exitToGalaxy()));
 
 function init() {
+  initCustomCursor();
   buildGalaxyScene();
 
   const clock = new THREE.Clock();
@@ -202,6 +314,7 @@ function init() {
 
     controls.update();
     if (orbits.length) updateOrbits(orbits, delta);
+    for (const material of pointMaterials) updateWaveTime(material, clock.elapsedTime);
     for (const marker of markers) marker.update(camera, sceneRoot.clientWidth, sceneRoot.clientHeight);
     renderer.render(scene, camera);
   }

@@ -48,20 +48,26 @@ const BACKGROUND_POINT_SIZE = 0.075;
 const INSIDE_COLOR = new THREE.Color(0xffe3ae); // warm old stars near the core
 const OUTSIDE_COLOR = new THREE.Color(0x9fc9ff); // hot young stars at the arm tips
 
+// The disk's exact arm-centerline formula (no random scatter), generalized
+// so any marker can be placed precisely on a visible spiral arm just by
+// picking how far out (0-1 of DISK_RADIUS) and which of the ARM_COUNT arms -
+// used for the Sun's own "you are here" marker below, and for other real
+// star systems placed further out along the galaxy (see farSystems.js).
+export function getArmPoint(radiusFraction, armIndex) {
+  const radius = DISK_RADIUS * radiusFraction;
+  const branchAngle = (armIndex / ARM_COUNT) * Math.PI * 2;
+  const angle = branchAngle + radius * SPIN;
+  return new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+}
+
 // Stylized "you are here" marker position - not real light-year units (none
 // of this galaxy is), but roughly matches where the real Sun sits: inside
 // one of the arms, a bit more than halfway out from center to the edge.
-// Reuses the disk's exact arm-centerline formula (no random scatter) so the
-// marker always lands precisely on the visible arm, even if SPIN/ARM_COUNT
-// change later.
 const SUN_RADIUS_FRACTION = 0.62;
 const SUN_ARM_INDEX = 0;
 
 export function getSunPosition() {
-  const radius = DISK_RADIUS * SUN_RADIUS_FRACTION;
-  const branchAngle = (SUN_ARM_INDEX / ARM_COUNT) * Math.PI * 2;
-  const angle = branchAngle + radius * SPIN;
-  return new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+  return getArmPoint(SUN_RADIUS_FRACTION, SUN_ARM_INDEX);
 }
 
 export function createGalaxy() {
